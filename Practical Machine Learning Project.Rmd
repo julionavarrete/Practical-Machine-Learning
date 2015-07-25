@@ -1,0 +1,120 @@
+---
+title: "Practical Machine Learning Project"
+author: "Julio Navarrete"
+date: "July 23Th, 2015"
+output: html_document
+---
+# Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.
+
+# Data Processing
+
+## Loading Libraries and Read the Data
+
+```{r}
+
+library(e1071)
+library(ggplot2)
+library(randomForest)
+library(caret)
+library(readr)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+
+# First download the data in your working directory
+
+data <- read.csv(file="/Users/Dex/SkyDrive/Documentos/BigData/dataSample/pml-training.csv")
+dtest <- read.csv(file="/Users/Dex/SkyDrive/Documentos/BigData/dataSample/pml-testing.csv")
+
+```
+
+The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable in the training set is the outcome to predict.
+
+## Preprocess the Data
+
+We are going to remove columns with NA values and not related with accelerometer measurements.  We are going to do this with training and test data.
+
+```{r}
+# remove columms that contains NA values
+sum(complete.cases(data))
+data <- data[, colSums(is.na(data)) == 0]
+dtest <- dtest[, colSums(is.na(dtest)) == 0]
+
+# remove columns not related with accelerometer measurements
+classe <- data$classe
+dataWC <- grepl("^X|timestamp|window", names(data))
+data <- data[, !dataWC]
+dataclean <- data[, sapply(data, is.numeric)]
+dataclean$classe <- classe
+
+
+dtestWC <- grepl("^X|timestamp|window", names(dtest))
+dtest <- dtest[, !dtestWC]
+dtestclean <- dtest[, sapply(dtest, is.numeric)]
+```
+
+As result of this operation we have 19622 observations and 53 variables in the training set and 20 observations and 53 variables in the testing set.
+
+# Split the Data
+
+Now we are going to split the training set into 80% of training data and 20% of validation data.
+
+```{r}
+set.seed(53165) #set for reproducibility
+inTrain <- createDataPartition(dataclean$classe, p=0.8, list=FALSE)
+training <- dataclean[inTrain,]
+testing <- dataclean[-inTrain,]
+```
+
+# Cross-Validation and Prediction Function
+
+We are going to use a Random Forest function because it is robust and choose the more important features. This instead of using PCA.  Also we cross-validate using bootstraping when we are training the model.
+
+```{r}
+trControl <- trainControl(method = "boot", number = 10)
+
+modelFit <- train(training$classe ~ ., method = "rf", ntree = 250, data=training, trControl = trControl)
+modelFit
+```
+
+Now we are going to test our model with the validation set and see the accuracy and out of sample error.
+
+```{r}
+predictRf <- predict(modelFit, testing)
+confusionMatrix(testing$classe, predictRf)
+```
+
+```{r}
+accuracy <- postResample(predictRf, testing$classe)
+accuracy
+outse <- 1 - as.numeric(confusionMatrix(testing$classe, predictRf)$overall[1])
+outse
+```
+
+Our estimation of accuracy is `r accuracy` and the estimation of out of sample error is `r outse`.
+
+# Results with the test data set
+
+```{r}
+result <- predict(modelFit, dtestclean[, -length(names(dtestclean))])
+result
+```
+
+# Appendix: Figures
+
+## Correlation Matrix.
+```{r}
+corrPlot <- cor(training[, -length(names(training))])
+corrplot(corrPlot, method="color")
+```
+
+## Decision Tree
+```{r}
+treeModel <- rpart(classe ~ ., data=training, method="class")
+prp(treeModel)
+```
+
